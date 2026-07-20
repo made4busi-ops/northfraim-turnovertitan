@@ -1,0 +1,5 @@
+{
+    "business_name": "Turnover Titans",
+    "db_path": "data/leads.db",
+    "log_path": "logs/titans.log"
+}
