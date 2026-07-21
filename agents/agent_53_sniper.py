@@ -1,59 +1,46 @@
-import sqlite3
 import os
 import sys
-import json
-import logging
+import sqlite3
 
-# Add agents dir to path to find agent_54
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from agent_54_compliance import check_compliance
+# Add parent dir to path to import agent_54
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from agents.agent_54_compliance import validate_lead
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_PATH = os.path.join(BASE_DIR, "logs", "titans.log")
-
-logging.basicConfig(filename=LOG_PATH, level=logging.INFO, 
-                    format='%asctime%s - %levelname - %message')
-
-def load_config():
-    try:
-        with open(CONFIG_PATH) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("ERROR: config.json not found.")
-        exit(1)
-
-config = load_config()
-DB_PATH = os.path.join(BASE_DIR, config.get("db_path", "data/leads.db"))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, 'data', 'leads.db')
 
 def drop_lead(lead_data):
-    # 1. Check compliance first
-    passed, reason = check_compliance(lead_data)
-    if not passed:
-        logging.error(f"Lead rejected: {"reason}")
+    is_valid, msg = validate_lead(lead_data)
+    if not is_valid:
+        print(f"SNIPER: Lead rejected by compliance - {msg}")
         return None
-    
-    # 2. Insert into DB
+
     try:
         conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT INTO leads (name, business, platform, details) VALUES (?, ?, ?, ?)",
-                  (lead_data.get('name'), lead_data.get('business'), lead_data.get('platform', 'Unknown'), lead_data.get('details', '')))
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO leads (name, business, email, phone)
+            VALUES (?, ?, ?, ?)
+        ''', (
+            lead_data.get('name', ''),
+            lead_data.get('business', ''),
+            lead_data.get('email', ''),
+            lead_data.get('phone', '')
+        ))
         conn.commit()
-        lead_id = c.lastrowid
+        lead_id = cursor.lastrowid
         conn.close()
-        logging.info(f"Lead dropped in Ledger. ID: {lead_id}")
+        print(f"SNIPER: Lead dropped in Ledger. ID: {lead_id}")
         return lead_id
     except Exception as e:
-        logging.error(f"Database error: {e}")
+        print(f"SNIPER: Error dropping lead - {e}")
         return None
 
 if __name__ == "__main__":
-    test_lead = {"name": "Test Host", "business": "Airbnb Rental", "platform": "Airbnb", "details": "Found by Sniper"}
-    lead_id = drop_lead(test_lead)
-    if lead_id:
-        print(f"SNIPER: Lead dropped in Ledger. ID: {lead_id}")
-    else:
-        print("SNIPER: Failed to drop lead.")
+    test_lead = {
+        "name": "Derrick",
+        "business": "Turnover Titans",
+        "email": "governor@titans.com",
+        "phone": "555-0100"
+    }
+    drop_lead(test_lead)
