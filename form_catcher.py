@@ -24,7 +24,7 @@ class FormHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length).decode('utf-8')
         data = parse_qs(post_data)
-        lead = {'name': data.get('name', [''])[0], 'business': data.get('business', [''])[0], 'email': data.get('email', [''])[0], 'phone': data.get('phone', [''])[0]}
+        lead = {'name': data.get('name', [''])[0], 'business': data.get('business', [''])[0], 'email': data.get('email', [''])[0], 'phone': data.get('phone', [''])[0], 'message': data.get('message', [''])[0]}
         lead_id = drop_lead(lead)
         
         if lead_id:

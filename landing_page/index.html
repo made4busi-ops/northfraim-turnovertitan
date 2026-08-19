@@ -3,7 +3,7 @@
 <head><title>Turnover Titans</title></head>
 <body>
     <h1>Turnover Titans</h1>
-    <form action="/submit" method="POST">
+    <form action="/submit" method="POST" onsubmit="var b=this.querySelector('button'); b.disabled=true; b.innerText='Submitting\u2026 (this can take a few seconds)';">
         <label>Name:</label><input type="text" name="name" required><br><br>
         <label>Business:</label><input type="text" name="business" required><br><br>
         <label>Message:</label><textarea name="message"></textarea><br><br>

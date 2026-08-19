@@ -17,6 +17,7 @@ def init_ledger():
             business TEXT NOT NULL,
             email TEXT,
             phone TEXT,
+            message TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
