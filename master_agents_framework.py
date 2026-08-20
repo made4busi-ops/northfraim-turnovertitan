@@ -1,5 +1,7 @@
 import os
 import anthropic
+from dotenv import load_dotenv
+load_dotenv()
 
 class MasterAgent:
     def __init__(self, name, template, api_client=None):
@@ -18,7 +20,7 @@ class MasterAgent:
             }
         
         message = self.api_client.messages.create(
-            model="claude-3-haiku-20240307",
+            model="claude-haiku-4-5-20251001",
             max_tokens=500,
             temperature=0.7,
             system=self.template["system_prompt"],
