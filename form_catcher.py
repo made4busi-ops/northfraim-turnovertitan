@@ -22,6 +22,9 @@ from master_agents_framework import build_system
 from central_brain import CentralBrain, DB_PATH as DECISIONS_DB_PATH
 from pricing import calculate_price, PricingError, BASE_RATES, ADDON_RATES, TIER_MULTIPLIERS
 
+sys.path.insert(0, os.path.expanduser("~/data_moat"))
+from logger import log_event as data_moat_log_event
+
 OPS_PASSWORD = os.getenv("OPS_PASSWORD", "")
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 PUBLIC_DOMAIN = os.getenv("TT_PUBLIC_DOMAIN", "http://localhost:8080")
@@ -337,6 +340,13 @@ document.getElementById('book-btn').addEventListener('click', function () {{
             decision_data = prioritizer.reason(task)
             decision_id = brain.log_decision(agent_name=decision_data['agent'], template_used=decision_data['template'], task_description=f"Lead Eval: {lead['name']}", reasoning=decision_data['reasoning'], decision=decision_data['decision'], confidence=decision_data['confidence'])
             logging.info(f"Lead captured & evaluated. ID: {lead_id}, Brain Decision ID: {decision_id}, Confidence: {decision_data['confidence']}")
+            try:
+                data_moat_log_event('turnover_titans', 'lead', {
+                    'lead_id': lead_id, 'name': lead['name'], 'business': lead['business'],
+                    'decision': decision_data['decision'], 'confidence': decision_data['confidence'],
+                })
+            except Exception as e:
+                logging.error(f"data_moat logging failed: {e}")
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
