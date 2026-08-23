@@ -12,9 +12,11 @@ import json
 import os
 import sqlite3
 import sys
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pitch_engine import load_json_dict, build_pitch
+import email_sender
 
 
 def load_pending(pending_path):
@@ -99,9 +101,79 @@ def run_watch_cycle(db_path, winners_path, losers_path, pending_path):
     return new_count
 
 
+def list_pending(pending_path):
+    """Real, human-readable listing of every draft still awaiting a
+    real decision -- this is what you read before approving anything."""
+    data = load_pending(pending_path)
+    waiting = [p for p in data["pending"] if p["status"] == "awaiting_approval"]
+    if not waiting:
+        print("Nothing awaiting approval.")
+        return
+    for p in waiting:
+        print(f"[{p['lead_id']}] {p['name']} ({p['business']}) -> {p.get('email') or 'NO EMAIL ON FILE'}")
+        print("  " + p["drafted_pitch"].replace("\n", "\n  "))
+        print("")
+
+
+def approve_and_send(pending_path, lead_id):
+    """The real, deliberate action lead_watcher.py never took on its
+    own: a human explicitly approves ONE specific draft by lead_id,
+    and only then does a real email actually go out via email_sender.py.
+    Drafting stays fully automatic (run_watch_cycle); sending stays
+    fully manual, one lead at a time, on purpose -- 'wire the pieces
+    together' doesn't mean 'auto-email every lead with no review.'"""
+    data = load_pending(pending_path)
+    entry = next((p for p in data["pending"] if str(p["lead_id"]) == str(lead_id)), None)
+    if entry is None:
+        print(f"ERROR: no pending draft found for lead_id {lead_id}.")
+        return False
+    if entry["status"] != "awaiting_approval":
+        print(f"ERROR: lead {lead_id} is already '{entry['status']}', not awaiting_approval.")
+        return False
+    if not entry.get("email"):
+        print(f"ERROR: lead {lead_id} ({entry['name']}) has no email on file -- cannot send.")
+        return False
+
+    subject = f"Turnover Titans -- reliable STR turnover partner for {entry['business']}"
+    try:
+        email_sender.send_email(entry["email"], subject, entry["drafted_pitch"])
+    except email_sender.EmailSendError as e:
+        entry["status"] = "send_failed"
+        entry["error"] = str(e)
+        save_pending(pending_path, data)
+        print(f"REAL SEND FAILED for lead {lead_id}: {e}")
+        return False
+
+    entry["status"] = "sent"
+    entry["sent_at"] = datetime.now(timezone.utc).isoformat()
+    save_pending(pending_path, data)
+    print(f"[WATCHER] Real pitch sent to {entry['email']} for lead {lead_id} ({entry['name']}, {entry['business']}).")
+    return True
+
+
 def main(argv):
+    # 'list'/'approve' are new real subcommands (drafts -> real send).
+    # The original 4-positional-arg cycle-run usage is unchanged and
+    # still works exactly as before for anything already invoking it
+    # that way (e.g. an existing cron entry).
+    if len(argv) >= 2 and argv[1] == "list":
+        if len(argv) != 3:
+            print("Usage: python3 lead_watcher.py list <pending_path>")
+            return 2
+        list_pending(argv[2])
+        return 0
+
+    if len(argv) >= 2 and argv[1] == "approve":
+        if len(argv) != 4:
+            print("Usage: python3 lead_watcher.py approve <pending_path> <lead_id>")
+            return 2
+        return 0 if approve_and_send(argv[2], argv[3]) else 1
+
     if len(argv) != 5:
-        print("Usage: python3 lead_watcher.py <leads_db_path> <winners_path> <losers_path> <pending_path>")
+        print("Usage:")
+        print("  python3 lead_watcher.py <leads_db_path> <winners_path> <losers_path> <pending_path>")
+        print("  python3 lead_watcher.py list <pending_path>")
+        print("  python3 lead_watcher.py approve <pending_path> <lead_id>")
         return 2
 
     db_path, winners_path, losers_path, pending_path = argv[1], argv[2], argv[3], argv[4]
