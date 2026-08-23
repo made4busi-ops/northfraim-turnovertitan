@@ -40,7 +40,7 @@ def _save(store_path, data):
     os.replace(tmp, store_path)
 
 
-def add_property(store_path, property_id, name, owner, notes=""):
+def add_property(store_path, property_id, name, owner, notes="", access_details=""):
     data = _load(store_path)
     if property_id in data["properties"]:
         print("WARNING: property '" + property_id + "' already exists. Not overwritten.")
@@ -49,6 +49,7 @@ def add_property(store_path, property_id, name, owner, notes=""):
         "name": name,
         "owner": owner,
         "notes": notes,
+        "access_details": access_details,
         "added_at": _now(),
     }
     _save(store_path, data)
@@ -65,6 +66,8 @@ def get_property(store_path, property_id):
     print("=== " + property_id + " ===")
     print("Name: " + prop["name"])
     print("Owner: " + prop["owner"])
+    if prop.get("access_details"):
+        print("Access details: " + prop["access_details"])
     if prop.get("notes"):
         print("Notes: " + prop["notes"])
     print("Added: " + prop["added_at"])

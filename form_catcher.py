@@ -21,6 +21,8 @@ from agents.agent_53_sniper import drop_lead
 from master_agents_framework import build_system
 from central_brain import CentralBrain, DB_PATH as DECISIONS_DB_PATH
 from pricing import calculate_price, PricingError, BASE_RATES, ADDON_RATES, TIER_MULTIPLIERS
+import property_registry
+import job_queue
 
 sys.path.insert(0, os.path.expanduser("~/data_moat"))
 from logger import log_event as data_moat_log_event
@@ -28,6 +30,15 @@ from logger import log_event as data_moat_log_event
 OPS_PASSWORD = os.getenv("OPS_PASSWORD", "")
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 PUBLIC_DOMAIN = os.getenv("TT_PUBLIC_DOMAIN", "http://localhost:8080")
+# Turnover Titans' own webhook endpoint secret -- distinct from
+# STRIPE_WEBHOOK_SECRET in northfraim-job77/.env, which belongs to
+# NorthFraim's own registered endpoint. Webhook secrets are per
+# registered endpoint URL, not per Stripe account, so that one can't be
+# reused here even though the account is shared.
+TT_STRIPE_WEBHOOK_SECRET = os.getenv("TT_STRIPE_WEBHOOK_SECRET", "")
+
+PROPERTIES_STORE = os.path.join(BASE_DIR, "data", "properties.json")
+JOB_QUEUE_STORE = os.path.join(BASE_DIR, "data", "job_queue.json")
 
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -125,6 +136,12 @@ class FormHandler(BaseHTTPRequestHandler):
 <label for="email">Email</label>
 <input type="email" id="email" placeholder="you@property.com">
 
+<label for="address">Property address</label>
+<input type="text" id="address" placeholder="123 Main St, Springfield">
+
+<label for="access-details">Door code / access instructions</label>
+<input type="text" id="access-details" placeholder="Lockbox code, gate code, key location, etc.">
+
 <div id="quote"></div>
 <button id="book-btn">Get Checkout Link</button>
 <div id="status"></div>
@@ -172,6 +189,8 @@ document.getElementById('book-btn').addEventListener('click', function () {{
   status.textContent = '';
   var body = currentSelection();
   body.customer_email = document.getElementById('email').value;
+  body.property_address = document.getElementById('address').value;
+  body.access_details = document.getElementById('access-details').value;
   fetch('/api/checkout/job', {{
     method: 'POST', headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify(body)
@@ -311,7 +330,11 @@ document.getElementById('book-btn').addEventListener('click', function () {{
                         }
                         for li in quote.line_items if li["amount"] > 0
                     ],
-                    automatic_tax={"enabled": True},
+                    # automatic_tax disabled: the shared Stripe account has no
+                    # head_office address set in Tax Settings yet, which makes
+                    # EVERY checkout session on this account fail with a real
+                    # 400 until it's set. Re-enable once a real business address
+                    # is provided and set via stripe.tax.Settings.update().
                     customer_email=data.get("customer_email") or None,
                     metadata={
                         "bedroom_tier": quote.bedroom_tier,
@@ -319,6 +342,13 @@ document.getElementById('book-btn').addEventListener('click', function () {{
                         "addons": ",".join(quote.addons),
                         "same_day": str(quote.same_day),
                         "total": str(quote.total),
+                        # Real property intake -- survives to the webhook event
+                        # so a paid booking can create a real property + job
+                        # without anyone re-typing this. Stripe metadata values
+                        # cap at 500 chars; truncated defensively, not that
+                        # anyone should be typing that much into a text input.
+                        "property_address": str(data.get("property_address") or "")[:500],
+                        "access_details": str(data.get("access_details") or "")[:500],
                     },
                     success_url=f"{PUBLIC_DOMAIN}/book?checkout=success",
                     cancel_url=f"{PUBLIC_DOMAIN}/book",
@@ -327,6 +357,65 @@ document.getElementById('book-btn').addEventListener('click', function () {{
                 self._send_json(502, {"error": f"Payment provider error: {getattr(e, 'user_message', None) or str(e)}"})
                 return
             self._send_json(200, {"checkout_url": session.url, "session_id": session.id, "total": quote.total})
+            return
+
+        if self.path == '/webhook':
+            length = int(self.headers.get('Content-Length', 0))
+            payload = self.rfile.read(length) if length else b''
+            sig_header = self.headers.get('Stripe-Signature')
+
+            if TT_STRIPE_WEBHOOK_SECRET:
+                try:
+                    event = stripe.Webhook.construct_event(payload, sig_header, TT_STRIPE_WEBHOOK_SECRET)
+                except (ValueError, stripe.error.SignatureVerificationError) as e:
+                    self._send_json(400, {"error": f"Invalid webhook signature: {e}"})
+                    return
+            else:
+                # No signing secret configured yet (dev-only fallback, same
+                # pattern used elsewhere this session) -- trust the parsed
+                # body. Real deployment MUST set TT_STRIPE_WEBHOOK_SECRET.
+                try:
+                    event = json.loads(payload)
+                except json.JSONDecodeError:
+                    self._send_json(400, {"error": "Invalid JSON body."})
+                    return
+
+            event_type = event["type"] if isinstance(event, dict) else event.type
+            data_object = event["data"]["object"] if isinstance(event, dict) else event.data.object
+
+            if event_type == "checkout.session.completed":
+                session_id = data_object["id"] if isinstance(data_object, dict) else data_object.id
+                metadata = data_object.get("metadata", {}) if isinstance(data_object, dict) else data_object.metadata
+                customer_email = (data_object.get("customer_details", {}) or {}).get("email") if isinstance(data_object, dict) else (data_object.customer_details.email if data_object.customer_details else None)
+
+                # Stable, deterministic ids derived from the real Stripe
+                # session id -- Stripe can and does redeliver webhook
+                # events, and both add_property()/create_job() already
+                # refuse to overwrite an existing id, so a retry is a
+                # real no-op instead of a duplicate property/job.
+                property_id = f"tt-{session_id}"
+                job_id = f"tt-{session_id}"
+
+                address = (metadata.get("property_address") or "Address not provided").strip() or "Address not provided"
+                access_details = metadata.get("access_details") or ""
+                owner = customer_email or "unknown"
+
+                property_registry.add_property(
+                    PROPERTIES_STORE, property_id, name=address, owner=owner, access_details=access_details,
+                )
+                job_queue.create_job(JOB_QUEUE_STORE, job_id, property_name=address)
+
+                try:
+                    data_moat_log_event('turnover_titans', 'job_created', {
+                        'session_id': session_id, 'property_id': property_id, 'job_id': job_id,
+                        'bedroom_tier': metadata.get('bedroom_tier'), 'total': metadata.get('total'),
+                    })
+                except Exception as e:
+                    logging.error(f"data_moat logging failed: {e}")
+
+                logging.info(f"Real booking paid: session={session_id} -> property={property_id} job={job_id}")
+
+            self._send_json(200, {"received": True})
             return
 
         content_length = int(self.headers['Content-Length'])
