@@ -300,7 +300,6 @@ document.getElementById('book-btn').addEventListener('click', function () {{
             try:
                 session = stripe.checkout.Session.create(
                     mode="payment",
-                    payment_method_types=["card"],
                     line_items=[
                         {
                             "price_data": {
@@ -312,6 +311,7 @@ document.getElementById('book-btn').addEventListener('click', function () {{
                         }
                         for li in quote.line_items if li["amount"] > 0
                     ],
+                    automatic_tax={"enabled": True},
                     customer_email=data.get("customer_email") or None,
                     metadata={
                         "bedroom_tier": quote.bedroom_tier,
