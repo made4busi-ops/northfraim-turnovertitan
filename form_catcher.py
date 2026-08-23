@@ -5,6 +5,7 @@ import os
 import sqlite3
 import sys
 import logging
+import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs
 
@@ -39,6 +40,8 @@ TT_STRIPE_WEBHOOK_SECRET = os.getenv("TT_STRIPE_WEBHOOK_SECRET", "")
 
 PROPERTIES_STORE = os.path.join(BASE_DIR, "data", "properties.json")
 JOB_QUEUE_STORE = os.path.join(BASE_DIR, "data", "job_queue.json")
+JOB_PHOTOS_DIR = os.path.join(BASE_DIR, "data", "job_photos")
+os.makedirs(JOB_PHOTOS_DIR, exist_ok=True)
 
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -78,6 +81,12 @@ class FormHandler(BaseHTTPRequestHandler):
             if not self._require_ops_auth():
                 return
             self._render_decisions_page()
+            return
+        if self.path.startswith('/ops/job/') and self.path.endswith('/photos'):
+            if not self._require_ops_auth():
+                return
+            job_id = self.path[len('/ops/job/'):-len('/photos')]
+            self._render_photo_upload_page(job_id)
             return
         if self.path.startswith('/book'):
             self._render_booking_page()
@@ -272,6 +281,112 @@ document.getElementById('book-btn').addEventListener('click', function () {{
         self.end_headers()
         self.wfile.write(body)
 
+    def _render_photo_upload_page(self, job_id):
+        jobs_data = json.load(open(JOB_QUEUE_STORE)) if os.path.exists(JOB_QUEUE_STORE) else {"jobs": {}}
+        job = jobs_data.get("jobs", {}).get(job_id)
+        if job is None:
+            self.send_response(404)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(f"No job '{job_id}'.".encode())
+            return
+
+        items_html = ""
+        for item in job_queue.CHECKLIST_ITEMS:
+            count = len((job.get("photos") or {}).get(item, []))
+            items_html += f"""
+            <div class="item">
+              <label>{html.escape(item)} <span class="count">({count} photo{'s' if count != 1 else ''} attached)</span></label>
+              <input type="file" accept="image/*" data-item="{html.escape(item)}">
+              <button class="upload-btn" data-item="{html.escape(item)}">Upload</button>
+              <div class="item-status" id="status-{html.escape(item)}"></div>
+            </div>"""
+
+        inspection = job.get("inspection") or {}
+        result_html = ""
+        if inspection.get("result"):
+            v = inspection.get("verification") or {}
+            errs = "".join(f"<li>{html.escape(e)}</li>" for e in v.get("errors", []))
+            result_html = f"""<div class="result {inspection['result']}">
+              Inspection result: <b>{inspection['result'].upper()}</b>
+              {'<ul>' + errs + '</ul>' if errs else ''}
+            </div>"""
+
+        page = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Job Photos -- {html.escape(job_id)}</title>
+<style>
+  body {{ background:#0b0d10; color:#dfe3e6; font-family:-apple-system,sans-serif; max-width:560px; margin:0 auto; padding:2rem 1.5rem 4rem; }}
+  h1 {{ font-size:1.3rem; }}
+  .sub {{ color:#8892a4; font-size:0.85rem; margin-bottom:1.5rem; }}
+  .item {{ background:#14171c; border:1px solid #262b36; padding:0.9rem; margin-bottom:0.7rem; }}
+  .item label {{ display:block; font-size:0.85rem; margin-bottom:0.5rem; }}
+  .count {{ color:#8892a4; font-size:0.78rem; }}
+  input[type=file] {{ display:block; margin-bottom:0.5rem; font-size:0.82rem; color:#dfe3e6; }}
+  button {{ padding:0.5rem 1rem; background:#e8a33d; color:#0b0d10; border:none; font-weight:600; cursor:pointer; font-size:0.85rem; }}
+  .item-status {{ font-size:0.8rem; margin-top:0.4rem; min-height:1rem; }}
+  #inspect-btn {{ width:100%; margin-top:1.5rem; padding:0.85rem; }}
+  #inspect-status {{ font-size:0.85rem; margin-top:0.6rem; }}
+  .result {{ margin-top:1.5rem; padding:1rem; border:1px solid #262b36; }}
+  .result.pass {{ border-color:#4CAF82; }}
+  .result.fail {{ border-color:#c1443c; }}
+</style></head>
+<body>
+<h1>Job Photos: {html.escape(job_id)}</h1>
+<p class="sub">{html.escape(job.get('property_name', ''))} -- attach a real photo for each step, then inspect.</p>
+{items_html}
+<button id="inspect-btn">Run Photo-Verified Inspection</button>
+<div id="inspect-status"></div>
+{result_html}
+<script>
+function toBase64(file) {{
+  return new Promise(function (resolve, reject) {{
+    var reader = new FileReader();
+    reader.onload = function () {{ resolve(reader.result.split(',')[1]); }};
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  }});
+}}
+document.querySelectorAll('.upload-btn').forEach(function (btn) {{
+  btn.addEventListener('click', function () {{
+    var item = btn.dataset.item;
+    var input = document.querySelector('input[data-item="' + item + '"]');
+    var status = document.getElementById('status-' + item);
+    if (!input.files.length) {{ status.textContent = 'Choose a photo first.'; return; }}
+    status.textContent = 'Uploading...';
+    toBase64(input.files[0]).then(function (b64) {{
+      fetch('/api/jobs/{html.escape(job_id)}/photos', {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{item: item, image_base64: b64}})
+      }})
+        .then(function (r) {{ return r.json().then(function (b) {{ return {{status: r.status, body: b}}; }}); }})
+        .then(function (res) {{
+          status.textContent = res.status === 200 ? 'Uploaded.' : (res.body.error || 'Upload failed.');
+          if (res.status === 200) location.reload();
+        }})
+        .catch(function (err) {{ status.textContent = 'Network error: ' + err.message; }});
+    }});
+  }});
+}});
+document.getElementById('inspect-btn').addEventListener('click', function () {{
+  var status = document.getElementById('inspect-status');
+  status.textContent = 'Running real photo verification...';
+  fetch('/api/jobs/{html.escape(job_id)}/inspect', {{method: 'POST'}})
+    .then(function (r) {{ return r.json().then(function (b) {{ return {{status: r.status, body: b}}; }}); }})
+    .then(function (res) {{
+      status.textContent = '';
+      location.reload();
+    }})
+    .catch(function (err) {{ status.textContent = 'Network error: ' + err.message; }});
+}});
+</script>
+</body></html>"""
+        body = page.encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _read_json_body(self):
         length = int(self.headers.get('Content-Length', 0))
         raw = self.rfile.read(length).decode('utf-8') if length else '{}'
@@ -357,6 +472,57 @@ document.getElementById('book-btn').addEventListener('click', function () {{
                 self._send_json(502, {"error": f"Payment provider error: {getattr(e, 'user_message', None) or str(e)}"})
                 return
             self._send_json(200, {"checkout_url": session.url, "session_id": session.id, "total": quote.total})
+            return
+
+        if self.path.startswith('/api/jobs/') and self.path.endswith('/photos'):
+            if not self._require_ops_auth():
+                return
+            job_id = self.path[len('/api/jobs/'):-len('/photos')]
+            try:
+                data = self._read_json_body()
+            except json.JSONDecodeError:
+                self._send_json(400, {"error": "Invalid JSON body."})
+                return
+            item = data.get("item")
+            image_b64 = data.get("image_base64")
+            if not item or not image_b64:
+                self._send_json(400, {"error": "item and image_base64 are required."})
+                return
+            try:
+                image_bytes = base64.b64decode(image_b64)
+            except Exception:
+                self._send_json(400, {"error": "image_base64 is not valid base64."})
+                return
+            if len(image_bytes) < 1024:
+                self._send_json(400, {"error": "Image too small to be a real photo."})
+                return
+
+            job_dir = os.path.join(JOB_PHOTOS_DIR, job_id)
+            os.makedirs(job_dir, exist_ok=True)
+            safe_item = "".join(c for c in item if c.isalnum() or c == "_") or "photo"
+            photo_path = os.path.join(job_dir, f"{safe_item}_{uuid.uuid4().hex[:8]}.jpg")
+            with open(photo_path, "wb") as f:
+                f.write(image_bytes)
+
+            ok = job_queue.add_photo(JOB_QUEUE_STORE, job_id, item, photo_path)
+            if not ok:
+                os.remove(photo_path)
+                self._send_json(400, {"error": f"Could not attach photo -- check job_id '{job_id}' and item '{item}'."})
+                return
+            self._send_json(200, {"attached": True, "item": item})
+            return
+
+        if self.path.startswith('/api/jobs/') and self.path.endswith('/inspect'):
+            if not self._require_ops_auth():
+                return
+            job_id = self.path[len('/api/jobs/'):-len('/inspect')]
+            ok = job_queue.inspect_job(JOB_QUEUE_STORE, job_id)
+            if not ok:
+                self._send_json(400, {"error": "Could not run inspection -- check the job is in Cleaning with a complete checklist and a photo for every item."})
+                return
+            jobs_data = json.load(open(JOB_QUEUE_STORE))
+            result = jobs_data["jobs"][job_id]["inspection"]["result"]
+            self._send_json(200, {"result": result})
             return
 
         if self.path == '/webhook':

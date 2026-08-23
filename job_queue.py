@@ -13,6 +13,8 @@ import os
 import sys
 from datetime import datetime, timezone
 
+import photo_verification
+
 CHECKLIST_ITEMS = [
     "pre_check_walkthrough_damage_scan",
     "bedroom_strip_replace_wipe_vacuum",
@@ -63,7 +65,8 @@ def create_job(store_path, job_id, property_name):
         "property_name": property_name,
         "state": "Pending",
         "checklist": {item: False for item in CHECKLIST_ITEMS},
-        "inspection": {"result": None, "notes": None, "inspected_at": None},
+        "photos": {item: [] for item in CHECKLIST_ITEMS},
+        "inspection": {"result": None, "notes": None, "inspected_at": None, "verification": None},
         "pay_status": "unpaid",
         "created_at": _now(),
         "started_at": None,
@@ -118,7 +121,42 @@ def check_item(store_path, job_id, item_key):
     return True
 
 
-def inspect_job(store_path, job_id, result, notes=""):
+def add_photo(store_path, job_id, checklist_item, photo_path):
+    """Real photo attached to a specific real checklist step. Refuses a
+    photo for a step that isn't a real checklist item, or a job that
+    isn't actually in Cleaning -- same "no fabricated evidence" spirit
+    as everything else here."""
+    data = _load(store_path)
+    job = data["jobs"].get(job_id)
+    if job is None:
+        print(f"WARNING: job '{job_id}' does not exist.")
+        return False
+    if job["state"] != "Cleaning":
+        print(f"WARNING: job '{job_id}' is '{job['state']}', must be Cleaning to attach photos.")
+        return False
+    if checklist_item not in CHECKLIST_ITEMS:
+        print(f"WARNING: '{checklist_item}' is not a real checklist item. Valid items: {CHECKLIST_ITEMS}")
+        return False
+    if not os.path.exists(photo_path):
+        print(f"WARNING: photo file does not exist on disk: {photo_path}")
+        return False
+
+    job.setdefault("photos", {item: [] for item in CHECKLIST_ITEMS})
+    job["photos"].setdefault(checklist_item, [])
+    job["photos"][checklist_item].append(photo_path)
+    _save(store_path, data)
+    print(f"[QUEUE] '{job_id}': photo attached for '{checklist_item}'")
+    return True
+
+
+def inspect_job(store_path, job_id, notes=""):
+    """Real photo-verified inspection -- replaces the old typed
+    'pass'/'fail' string, which had zero evidence behind it despite
+    "photo-verified turnovers" being the actual pitch. Requires at
+    least one real photo per checklist item, then runs
+    photo_verification.verify_job_photos() (real Grok-vision check) on
+    all of them. The result is computed from that real evidence, not
+    typed by whoever calls this function."""
     data = _load(store_path)
     job = data["jobs"].get(job_id)
     if job is None:
@@ -131,20 +169,31 @@ def inspect_job(store_path, job_id, result, notes=""):
         missing = [k for k, v in job["checklist"].items() if not v]
         print(f"REJECTED: checklist incomplete, cannot inspect. Missing: {missing}")
         return False
-    if result not in ("pass", "fail"):
-        print("WARNING: result must be 'pass' or 'fail'.")
+
+    photos = job.get("photos", {})
+    missing_photos = [item for item in CHECKLIST_ITEMS if not photos.get(item)]
+    if missing_photos:
+        print(f"REJECTED: no photo submitted for: {missing_photos}. Cannot photo-verify without them.")
         return False
 
-    job["inspection"] = {"result": result, "notes": notes, "inspected_at": _now()}
+    all_photo_paths = [p for item in CHECKLIST_ITEMS for p in photos.get(item, [])]
+    verification = photo_verification.verify_job_photos(all_photo_paths)
+    result = "pass" if verification["verified"] else "fail"
+
+    job["inspection"] = {
+        "result": result, "notes": notes, "inspected_at": _now(), "verification": verification,
+    }
 
     if result == "pass":
         job["state"] = "Completed"
         job["completed_at"] = _now()
         job["pay_status"] = "approved_for_payment"
-        print(f"[QUEUE] '{job_id}': INSPECTION PASS — job Completed, payment approved.")
+        print(f"[QUEUE] '{job_id}': PHOTO-VERIFIED PASS — job Completed, payment approved.")
     else:
         job["pay_status"] = "not_paid_failed_inspection"
-        print(f"[QUEUE] '{job_id}': INSPECTION FAIL — documented, NOT paid, NOT marked Completed.")
+        print(f"[QUEUE] '{job_id}': PHOTO-VERIFIED FAIL — documented, NOT paid, NOT marked Completed.")
+        for err in verification.get("errors", []):
+            print(f"  {err}")
         if notes:
             print(f"  Notes: {notes}")
 
@@ -177,7 +226,8 @@ def _usage():
     print("  python3 job_queue.py <store_path> start <job_id>")
     print("  python3 job_queue.py <store_path> check-item <job_id> <item_key>")
     print(f"  Valid items in order: {CHECKLIST_ITEMS}")
-    print("  python3 job_queue.py <store_path> inspect <job_id> <pass|fail> [notes]")
+    print("  python3 job_queue.py <store_path> add-photo <job_id> <item_key> <photo_path>")
+    print("  python3 job_queue.py <store_path> inspect <job_id> [notes]")
     print("  python3 job_queue.py <store_path> board")
 
 
@@ -207,12 +257,18 @@ def main(argv):
             return 2
         return 0 if check_item(store_path, rest[0], rest[1]) else 1
 
-    if command == "inspect":
-        if len(rest) not in (2, 3):
+    if command == "add-photo":
+        if len(rest) != 3:
             _usage()
             return 2
-        notes = rest[2] if len(rest) == 3 else ""
-        return 0 if inspect_job(store_path, rest[0], rest[1], notes) else 1
+        return 0 if add_photo(store_path, rest[0], rest[1], rest[2]) else 1
+
+    if command == "inspect":
+        if len(rest) not in (1, 2):
+            _usage()
+            return 2
+        notes = rest[1] if len(rest) == 2 else ""
+        return 0 if inspect_job(store_path, rest[0], notes) else 1
 
     if command == "board":
         board(store_path)
