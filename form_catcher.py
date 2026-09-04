@@ -445,11 +445,15 @@ document.getElementById('inspect-btn').addEventListener('click', function () {{
                         }
                         for li in quote.line_items if li["amount"] > 0
                     ],
-                    # automatic_tax disabled: the shared Stripe account has no
-                    # head_office address set in Tax Settings yet, which makes
-                    # EVERY checkout session on this account fail with a real
-                    # 400 until it's set. Re-enable once a real business address
-                    # is provided and set via stripe.tax.Settings.update().
+                    # automatic_tax re-enabled (2026-09-04): confirmed live
+                    # against the real, live-mode Stripe account
+                    # (stripe.tax.Settings.retrieve(), livemode=true) that
+                    # head_office is already set -- 1427 East High Street,
+                    # Springfield, OH 45505, status "active". The blocking
+                    # condition this comment used to describe no longer
+                    # applies; verified live below, not assumed from this
+                    # comment alone.
+                    automatic_tax={"enabled": True},
                     customer_email=data.get("customer_email") or None,
                     metadata={
                         "bedroom_tier": quote.bedroom_tier,
