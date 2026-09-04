@@ -1,13 +1,14 @@
 import base64
 import html
 import json
+import mimetypes
 import os
 import sqlite3
 import sys
 import logging
 import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 import stripe
 from dotenv import load_dotenv
@@ -91,10 +92,41 @@ class FormHandler(BaseHTTPRequestHandler):
         if self.path.startswith('/book'):
             self._render_booking_page()
             return
+        if self._serve_landing_page():
+            return
         self.send_response(404)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b"Not found.")
+
+    LANDING_DIR = os.path.join(BASE_DIR, "landing_page")
+
+    def _serve_landing_page(self) -> bool:
+        """Real static file route for landing_page/ (2026-09-04) -- this
+        directory (index.html, its promo video, its real photos) had no
+        route serving it at all before now; GET / returned a bare 404.
+        Returns True if it handled the request (found and served a real
+        file, or correctly 404'd for a path under this prefix), False if
+        the caller should fall through to its own 404 (path traversal
+        guarded: resolves the real path and refuses anything that lands
+        outside LANDING_DIR)."""
+        path = urlparse(self.path).path
+        rel = "index.html" if path in ("/", "") else path.lstrip("/")
+        target = os.path.realpath(os.path.join(self.LANDING_DIR, rel))
+        if os.path.commonpath([target, self.LANDING_DIR]) != self.LANDING_DIR:
+            return False
+        if not os.path.isfile(target):
+            return False
+
+        content_type = mimetypes.guess_type(target)[0] or "application/octet-stream"
+        with open(target, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return True
 
     def _render_booking_page(self):
         bedroom_options = "".join(
