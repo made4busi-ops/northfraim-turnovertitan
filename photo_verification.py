@@ -3,12 +3,19 @@ photo_verification.py -- Turnover Titans
 
 Real vision-check gate for job-completion photos, built on the exact
 same pattern as northfraim-job77/mcp/agents/nver_verification.py (real
-Grok-vision call over real images, XAI_API_KEY, same infra-tolerance
-philosophy: an API/network failure doesn't force a fail, since an
-infra hiccup shouldn't punish a cleaner who did real work and has real
-photos to prove it). The prompt itself is new -- this isn't checking
-for movie-rendering defects, it's checking that a photo genuinely
-shows a cleaned space and isn't blank, a duplicate, or irrelevant.
+vision-model call over real images, same infra-tolerance philosophy:
+an API/network failure doesn't force a fail, since an infra hiccup
+shouldn't punish a cleaner who did real work and has real photos to
+prove it). The prompt itself is new -- this isn't checking for
+movie-rendering defects, it's checking that a photo genuinely shows a
+cleaned space and isn't blank, a duplicate, or irrelevant.
+
+Vision provider (2026-09-04): switched from xAI's grok-4.3 to
+DeepSeek's deepseek-v4-flash-vision-exp -- confirmed for real against
+DeepSeek's own docs (api-docs.deepseek.com/guides/vision) that it
+genuinely accepts image input (base64 data URLs, same OpenAI-compatible
+message-content shape xAI uses), not text-only. Derrick asked for this
+swap since DEEPSEEK_API_KEY is the already-funded, already-working key.
 """
 import base64
 import os
@@ -17,10 +24,20 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/northfraim-job77/.env"))
+# Real bug found alongside this swap: the path above doesn't exist on
+# this machine (only northfraim-job77-full does, a different checkout)
+# -- so it silently loaded nothing here, and DEEPSEEK_API_KEY/
+# XAI_API_KEY were never actually reachable this way on this box. Both
+# NorthFraim and Turnover Titans share the same DeepSeek account/key in
+# practice, and the one place that key genuinely lives on this machine
+# is the live systemd EnvironmentFile -- same simple KEY=value format
+# load_dotenv already parses, so it doubles as a real fallback source
+# rather than inventing a new config mechanism.
+load_dotenv("/etc/northfraim/stripe.env")
 
-XAI_API_KEY = os.getenv("XAI_API_KEY", "")
-XAI_VISION_MODEL = "grok-4.3"
-XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_VISION_MODEL = "deepseek-v4-flash-vision-exp"
+DEEPSEEK_CHAT_URL = "https://api.deepseek.com/chat/completions"
 
 VERIFICATION_PROMPT = (
     "These are real photos a cleaner submitted as proof of completing a real "
@@ -47,14 +64,14 @@ VERIFICATION_PROMPT = (
 
 
 def _vision_quality_check(photo_paths: list) -> dict:
-    """Real Grok-vision call over real submitted photos. Returns
+    """Real DeepSeek-vision call over real submitted photos. Returns
     {"checked": bool, "results": [{"path", "passed", "reason"}], "reason": str}.
     "checked" is False (not a failure) only when the call itself
     couldn't run at all (no API key, network error) -- matches
     nver_verification.py's exact philosophy: infra failures don't
     silently fail a cleaner who submitted real photos."""
-    if not XAI_API_KEY:
-        return {"checked": False, "results": [], "reason": "XAI_API_KEY not set -- vision check could not run"}
+    if not DEEPSEEK_API_KEY:
+        return {"checked": False, "results": [], "reason": "DEEPSEEK_API_KEY not set -- vision check could not run"}
 
     content = []
     valid_paths = []
@@ -74,10 +91,19 @@ def _vision_quality_check(photo_paths: list) -> dict:
 
     try:
         r = requests.post(
-            XAI_CHAT_URL,
-            headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
-            json={"model": XAI_VISION_MODEL, "messages": [{"role": "user", "content": content}], "max_tokens": 400},
-            timeout=45,
+            DEEPSEEK_CHAT_URL,
+            headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
+            # max_tokens=2000, not 400: deepseek-v4-flash-vision-exp is a
+            # reasoning model -- its chain-of-thought shares the same
+            # completion-token budget as the final answer
+            # (usage.completion_tokens_details.reasoning_tokens), and a
+            # real test against this exact endpoint showed reasoning
+            # alone consuming 400-527+ tokens before any final content is
+            # written, leaving finish_reason="length" and an EMPTY
+            # message.content at the old budget. Confirmed working at
+            # 2000 (finish_reason="stop", real non-empty content).
+            json={"model": DEEPSEEK_VISION_MODEL, "messages": [{"role": "user", "content": content}], "max_tokens": 2000},
+            timeout=60,
         )
         if r.status_code != 200:
             return {"checked": False, "results": [], "reason": f"Vision request failed: HTTP {r.status_code}"}
