@@ -4,7 +4,7 @@
 # form_catcher.py has the database open for writes.
 set -euo pipefail
 
-REPO_DIR="/home/made4derrick/turnover-titans"
+REPO_DIR="/root/northfraim-turnovertitan"
 DB_PATH="$REPO_DIR/data/leads.db"
 BACKUP_DIR="$REPO_DIR/data/backups"
 RETENTION_DAYS=30

@@ -5,13 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Turnover Titans — Spotless turnovers, every time</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#1C1B18; --paper:#FBF8F3; --panel:#FFFFFF; --panel-2:#F2EEE5;
-    --teal:#2E6B63; --teal-bright:#3A857A; --teal-dim:#B7D6D0;
-    --gold:#C89A4A; --grey:#6B6660; --grey-dim:#9B958C;
-    --display: 'Fraunces', serif; --body: 'Inter', sans-serif; --mono: 'IBM Plex Mono', monospace;
+    --ink:#001b41; --paper:#ffffff; --panel:#ffffff; --panel-2:#f7fcff;
+    --teal:#1474c4; --teal-bright:#0a5cb2; --teal-dim:#bfdbeb;
+    --gold:#ffaa00; --grey:#6b7280; --grey-dim:#9ca3af; --border:#e5e7eb;
+    --display: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --body: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --mono: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
@@ -19,67 +21,83 @@
   a{color:inherit;}
   nav{
     display:flex; justify-content:space-between; align-items:center;
-    padding:24px clamp(24px,6vw,72px); background:var(--paper);
+    padding:24px clamp(24px,6vw,72px); background:var(--paper); border-bottom:1px solid var(--border);
   }
-  .logo{ font-family:var(--display); font-size:22px; letter-spacing:0.01em; }
-  .logo em{ color:var(--teal); font-style:italic; }
-  nav .navlink{ font-family:var(--mono); font-size:11px; color:var(--grey); letter-spacing:0.08em; text-decoration:none; }
+  .logo{ font-family:var(--display); font-weight:700; font-size:22px; letter-spacing:0.01em; }
+  .logo em{ color:var(--teal); font-style:normal; }
+  nav .navlink{ font-family:var(--mono); font-size:11px; color:var(--grey); letter-spacing:0.08em; text-decoration:none; font-weight:600; }
   .hero{
     padding:60px 24px 90px; text-align:center;
-    background:
-      radial-gradient(ellipse 900px 500px at 50% 0%, rgba(46,107,99,0.08), transparent 65%),
-      var(--paper);
+    background: var(--panel-2);
   }
   .eyebrow{
-    font-family:var(--mono); font-size:12px; color:var(--teal);
+    font-family:var(--mono); font-size:12px; color:var(--teal); font-weight:700;
     letter-spacing:0.18em; text-transform:uppercase; margin-bottom:22px;
     display:flex; align-items:center; justify-content:center; gap:10px;
   }
   .eyebrow .dot{ width:7px; height:7px; border-radius:50%; background:var(--gold); }
-  h1{ font-family:var(--display); font-weight:700; font-size:clamp(40px,6.5vw,72px); line-height:1.05; letter-spacing:-0.015em; margin:0 0 24px; }
-  h1 em{ font-style:italic; font-weight:500; color:var(--teal); }
+  h1{ font-family:var(--display); font-weight:800; font-size:clamp(40px,6.5vw,72px); line-height:1.05; letter-spacing:-0.015em; margin:0 0 24px; color:var(--ink); }
+  h1 em{ font-style:normal; font-weight:800; color:var(--teal); }
   .hero .sub{ font-size:clamp(16px,2vw,18px); color:var(--grey); max-width:46ch; margin:0 auto 36px; }
   .hero-cta{
     display:inline-flex; align-items:center; gap:10px;
-    background:var(--teal); color:#fff; border:none; border-radius:6px;
+    background:var(--teal); color:#fff; border:none; border-radius:9999px;
     padding:17px 34px; font-family:var(--body); font-weight:700; font-size:16px;
     cursor:pointer; text-decoration:none; transition:background .15s, transform .1s;
+    box-shadow:0 2px 8px rgba(0,27,65,0.15);
   }
   .hero-cta:hover{ background:var(--teal-bright); transform:translateY(-1px); }
   .hero-fine{ margin-top:16px; font-family:var(--mono); font-size:11.5px; color:var(--grey-dim); }
   .hero-still{
     margin:48px auto 0; max-width:820px; border-radius:12px; overflow:hidden;
-    box-shadow:0 30px 70px -25px rgba(28,27,24,0.25);
+    border:1px solid var(--border);
+    box-shadow:0 8px 24px rgba(0,27,65,0.1);
   }
+  .hero-still{ position:relative; }
   .hero-still img{ width:100%; display:block; }
+  .hero-still video{ width:100%; display:block; object-fit:cover; }
+  .hero-still video[data-ready="true"] ~ img{ display:none; }
+  .hero-still video:not([data-ready="true"]){ display:none; }
+  .type-line{
+    font-family:var(--mono); font-size:14px; color:var(--grey); margin-top:14px;
+    min-height:1.4em; position:relative;
+  }
+  .type-cursor{ display:inline-block; width:8px; background:var(--teal); animation:blink 0.9s steps(1) infinite; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  [data-reveal]{ opacity:0; transform:translateY(24px); transition:opacity .6s ease, transform .6s ease; }
+  [data-reveal].revealed{ opacity:1; transform:translateY(0); }
+  @media (prefers-reduced-motion: reduce){
+    .type-cursor{ animation:none; }
+    [data-reveal]{ transition:none; opacity:1; transform:none; }
+  }
 
   section.section{ max-width:1080px; margin:0 auto; padding:64px 24px; }
-  section.section h2{ font-family:var(--display); font-size:clamp(28px,4vw,42px); text-align:center; margin:0 0 12px; }
-  section.section h2 em{ font-style:italic; color:var(--teal); }
+  section.section h2{ font-family:var(--display); font-weight:800; font-size:clamp(28px,4vw,42px); text-align:center; margin:0 0 12px; color:var(--ink); }
+  section.section h2 em{ font-style:normal; color:var(--teal); }
   .section-sub{ text-align:center; color:var(--grey); max-width:52ch; margin:0 auto 44px; }
 
   .video-section{ background:var(--panel-2); }
-  .video-wrap{ max-width:640px; margin:0 auto; border-radius:12px; overflow:hidden; box-shadow:0 24px 60px -20px rgba(28,27,24,0.2); }
+  .video-wrap{ max-width:640px; margin:0 auto; border-radius:12px; overflow:hidden; border:1px solid var(--border); box-shadow:0 8px 24px rgba(0,27,65,0.1); }
   video{ width:100%; display:block; background:#000; }
 
   .gallery-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:22px; }
-  .gallery-item{ border-radius:10px; overflow:hidden; box-shadow:0 16px 40px -18px rgba(28,27,24,0.25); background:var(--panel); }
+  .gallery-item{ border-radius:10px; overflow:hidden; border:1px solid var(--border); box-shadow:0 2px 8px rgba(0,27,65,0.06); background:var(--panel); }
   .gallery-item img{ width:100%; aspect-ratio:4/3; object-fit:cover; display:block; }
   .gallery-item .cap{ padding:14px 16px; font-size:13.5px; color:var(--grey); }
 
-  .form-card{ background:var(--panel); border-radius:12px; padding:36px; max-width:520px; margin:0 auto; box-shadow:0 20px 50px -20px rgba(28,27,24,0.2); }
+  .form-card{ background:var(--panel); border-radius:12px; padding:36px; max-width:520px; margin:0 auto; border:1px solid var(--border); box-shadow:0 8px 24px rgba(0,27,65,0.1); }
   .form-card label{ display:block; font-size:13px; color:var(--grey); margin:14px 0 6px; }
   .form-card input, .form-card textarea{
-    width:100%; padding:10px 12px; border:1px solid #E4DFD4; border-radius:6px;
+    width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px;
     font-family:var(--body); font-size:14px; background:var(--paper); color:var(--ink);
   }
   .form-card button{
     width:100%; margin-top:22px; padding:14px; background:var(--teal); color:#fff;
-    border:none; border-radius:6px; font-weight:700; font-size:15px; cursor:pointer;
+    border:none; border-radius:9999px; font-weight:700; font-size:15px; cursor:pointer;
   }
   .form-card button:hover{ background:var(--teal-bright); }
 
-  footer{ display:flex; justify-content:space-between; padding:28px clamp(24px,6vw,72px); font-family:var(--mono); font-size:11px; color:var(--grey-dim); border-top:1px solid #E4DFD4; }
+  footer{ display:flex; justify-content:space-between; padding:28px clamp(24px,6vw,72px); font-family:var(--mono); font-size:11px; color:var(--grey-dim); border-top:1px solid var(--border); }
 </style>
 </head>
 <body>
@@ -95,8 +113,12 @@
     <p class="sub">Photo-verified cleaning for short-term rentals — every checklist item backed by a real photo, not a typed checkbox. Book in minutes, pay by the job.</p>
     <a href="#book" class="hero-cta">Get a quote <span>&rarr;</span></a>
     <div class="hero-fine">Real pricing, quoted live &middot; no subscription required</div>
+    <div class="type-line"><span id="typeTarget"></span><span class="type-cursor">&nbsp;</span></div>
     <div class="hero-still">
-      <img src="assets/img/hero-beauty.jpg" alt="A perfectly staged, spotless Airbnb bedroom with crisp white linens in morning light">
+      <video id="heroVideo" poster="assets/img/hero-beauty.jpg" muted autoplay loop playsinline>
+        <source src="media/promo.mp4" type="video/mp4">
+      </video>
+      <img id="heroImgFallback" src="assets/img/hero-beauty.jpg" alt="A perfectly staged, spotless Airbnb bedroom with crisp white linens in morning light">
     </div>
   </section>
 
@@ -115,15 +137,15 @@
     <h2>Every job, <em>photo-verified</em></h2>
     <div class="section-sub">A cleaner isn't done until a real photo proves it — bedrooms, bathroom, kitchen, floors, final reset.</div>
     <div class="gallery-grid">
-      <div class="gallery-item">
+      <div class="gallery-item" data-reveal>
         <img src="assets/img/lifestyle-cleaner.jpg" alt="A professional cleaner checking off a real checklist on a tablet in a spotless kitchen">
         <div class="cap">A real cleaner, checklist in hand — not a subcontractor gamble.</div>
       </div>
-      <div class="gallery-item">
+      <div class="gallery-item" data-reveal>
         <img src="assets/img/beauty-bathroom.jpg" alt="A sparkling clean bathroom with neatly folded towels">
         <div class="cap">Every room photographed before it's marked complete.</div>
       </div>
-      <div class="gallery-item">
+      <div class="gallery-item" data-reveal>
         <img src="assets/img/lifestyle-host.jpg" alt="A property host holding a tablet showing a completed turnover checklist app in front of their listing">
         <div class="cap">You see the same real proof your guests will.</div>
       </div>
@@ -148,5 +170,71 @@
     <span>&copy; 2026</span>
   </footer>
 
+<script>
+  // Hero background video: reuses the SAME real media/promo.mp4 already
+  // used (with controls) in the "See a real turnover" section below --
+  // no separate/fake source. Muted+looped as pure background motion; the
+  // real poster/<img> fallback stays visible until playback is confirmed.
+  (function () {
+    var heroVideo = document.getElementById('heroVideo');
+    if (!heroVideo || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    heroVideo.addEventListener('loadeddata', function () {
+      heroVideo.setAttribute('data-ready', 'true');
+      heroVideo.play().catch(function () {});
+    }, { once: true });
+  })();
+</script>
+
+<script>
+  // Real "typing" effect: cycles through the SAME real checklist items this
+  // page's own copy already claims to photo-verify ("bedrooms, bathroom,
+  // kitchen, floors, final reset").
+  (function () {
+    var target = document.getElementById('typeTarget');
+    if (!target) return;
+    var phrases = ['the bedroom', 'the bathroom', 'the kitchen', 'the final reset'];
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      target.textContent = 'Right now, a real photo is verifying ' + phrases[0] + '.';
+      return;
+    }
+    var prefix = 'Right now, a real photo is verifying ';
+    var suffix = '.';
+    var i = 0, char = 0, deleting = false;
+    function tick() {
+      var phrase = phrases[i % phrases.length];
+      if (!deleting) {
+        char++;
+        target.textContent = prefix + phrase.slice(0, char) + (char === phrase.length ? suffix : '');
+        if (char === phrase.length) { deleting = true; setTimeout(tick, 1600); return; }
+      } else {
+        char--;
+        target.textContent = prefix + phrase.slice(0, char);
+        if (char === 0) { deleting = false; i++; }
+      }
+      setTimeout(tick, deleting ? 22 : 42);
+    }
+    tick();
+  })();
+</script>
+
+<script>
+  // Real scroll-triggered reveal: plain IntersectionObserver, no library.
+  (function () {
+    var els = document.querySelectorAll('[data-reveal]');
+    if (!('IntersectionObserver' in window)) {
+      els.forEach(function (el) { el.classList.add('revealed'); });
+      return;
+    }
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('revealed');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    els.forEach(function (el) { observer.observe(el); });
+  })();
+</script>
 </body>
 </html>
