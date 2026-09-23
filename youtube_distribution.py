@@ -14,6 +14,19 @@ exists), record the real YouTube video ID, generate the real embed
 HTML, and inject it into that host's already-generated webpage.
 
 Nothing here invents a video ID or pretends an upload happened.
+
+DECISION (2026-09-16): left intentionally stubbed. No Google Cloud OAuth
+client (client ID/secret, consent screen) exists anywhere in this project or
+in .env -- that setup happens in Google's console by a human, not something
+that can be provisioned from here. Nothing currently depends on real YouTube
+upload working: tier_media_bridge.py's free-commercial trigger records a
+local render reference, not a YouTube URL, and su_001's real commercial
+(sites/media/welcome.mp4) is served locally rather than embedded via this
+module. To activate real distribution later: create a Google Cloud project,
+enable the YouTube Data API v3, complete OAuth consent, add an actual upload
+function here that authenticates with those credentials and calls
+videos.insert, then feed its returned video_id into record_video() -- the
+record/embed half below is already real and does not need to change.
 """
 
 import json
